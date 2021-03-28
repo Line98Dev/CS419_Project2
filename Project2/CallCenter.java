@@ -3,10 +3,13 @@ package Project2;
 /*
     You can import any additional package here.
  */
+
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+
 import static java.lang.Thread.sleep;
 
 
@@ -17,7 +20,10 @@ public class CallCenter {
        (Static member variables are members of the class,
        and are shared by all the objects of the class.)
      */
+    static ConcurrentLinkedQueue<Integer> waitingCustomers = new ConcurrentLinkedQueue<>();
 
+    private static final ReentrantLock waitingCustomersLock = new ReentrantLock();
+    private static final Condition waitingCustomersEmpty = waitingCustomersLock.newCondition();
 
     /*
        When admittedNewCustomer is -1 it means the greeter is available;
@@ -77,7 +83,7 @@ public class CallCenter {
            Feel free to add any additional member variables, modify
            the constructor, and/or add any additional member methods.
          */
-
+        int customersServed = 0;
         /*
            ID of the agent.
          */
@@ -97,20 +103,34 @@ public class CallCenter {
          */
         public void serve(int customerID) {
             System.out.println("Agent " + ID + " is serving customer " + customerID);
+//            System.out.println("Agent " + ID + " has served " +  customersServed + " customers.");
             try {
                 /*
                    Simulate busy serving a customer by sleeping for 25 milliseconds.
                 */
                 sleep(25);
             } catch (InterruptedException e) {
-               e.printStackTrace();
+                e.printStackTrace();
             }
         }
 
         public void run() {
-          /*
-              Please add your implementation of the run method here.
-           */
+          while (customersServed < CUSTOMERS_PER_AGENT) {
+              waitingCustomersLock.lock();
+              try {
+                  while (waitingCustomers.isEmpty()) {
+                      waitingCustomersEmpty.await();
+                  }
+                  System.out.println(waitingCustomers);
+                  int currentCustomerID = waitingCustomers.remove();
+                  customersServed++;
+                  serve(currentCustomerID);
+              } catch (InterruptedException e) {
+                  e.printStackTrace();
+              } finally {
+                  waitingCustomersLock.unlock();
+              }
+          }
         }
     }
 
@@ -118,25 +138,51 @@ public class CallCenter {
     /*
         The class for simulating the greeter service.
      */
-    public static class Greeter implements Runnable{
+    public static class Greeter implements Runnable {
         /*
             Please add your implementation of the Greeter class here.
             Feel free to add any member variable, add the constructor,
             and/or add any additional member methods.
          */
+        static int customersServiced = 0;
 
         /*
             Your Greeter implementation must call this method to greet
             a new customer. You must NOT modify this method.
          */
-        public void greet(int i, int t){
-            System.out.println("The expected waiting time for Customer "+i+" is "+t+" minutes.");
+        public void greet(int i, int t) {
+            System.out.println("The expected waiting time for Customer " + i + " is " + t + " minutes.");
         }
 
-        public void run(){
+        public void run() {
          /*
              Please add your implementation of the run method.
           */
+
+            while (customersServiced < NUMBER_OF_CUSTOMERS) {
+                newCustomerLock.lock();
+                try{
+                    while (admittedNewCustomer == -1){
+                        busy.await();
+                    }
+                    customersServiced++;
+                    waitingCustomersLock.lock();
+                    try {
+                        greet(customersServiced, waitingCustomers.size() * 2);
+                        waitingCustomers.add(admittedNewCustomer);
+                        System.out.println(waitingCustomers);
+                        waitingCustomersEmpty.signal();
+                    } finally {
+                        waitingCustomersLock.unlock();
+                    }
+                    admittedNewCustomer = -1;
+                    free.signal();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } finally {
+                    newCustomerLock.unlock();
+                }
+            }
         }
 
     }
@@ -155,11 +201,11 @@ public class CallCenter {
         /*
            The constructor that initializes the customer ID.
          */
-        public Customer (int i){
+        public Customer(int i) {
             ID = i;
         }
 
-        public void run(){
+        public void run() {
 
             newCustomerLock.lock();
 
@@ -191,8 +237,8 @@ public class CallCenter {
                  */
                 busy.signal();
             } catch (InterruptedException e) {
-               e.printStackTrace();
-            }finally {
+                e.printStackTrace();
+            } finally {
                 /*
                     Release the mutex lock.
                  */
@@ -204,13 +250,13 @@ public class CallCenter {
     /*
         You must NOT modify the main method.
      */
-    public static void main(String[] args){
+    public static void main(String[] args) {
         //create an executor of 10 threads
         ExecutorService es = Executors.newFixedThreadPool(NUMBER_OF_THREADS);
 
         es.submit(new Greeter());
 
-        for (int i=1; i<=NUMBER_OF_AGENTS; i++){
+        for (int i = 1; i <= NUMBER_OF_AGENTS; i++) {
             es.submit(new Agent(i));
         }
 
@@ -221,11 +267,11 @@ public class CallCenter {
          */
         try {
             sleep(1000);
-        }catch (InterruptedException e) {
+        } catch (InterruptedException e) {
             e.printStackTrace();
         }
 
-        for(int i=1; i<=NUMBER_OF_CUSTOMERS; i++){
+        for (int i = 1; i <= NUMBER_OF_CUSTOMERS; i++) {
             es.submit(new Customer(i));
             /*
                 For this simulation, a new customer call arrives every
@@ -233,7 +279,7 @@ public class CallCenter {
              */
             try {
                 sleep(5);
-            }catch (InterruptedException e) {
+            } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
