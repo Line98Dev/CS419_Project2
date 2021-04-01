@@ -103,7 +103,6 @@ public class CallCenter {
          */
         public void serve(int customerID) {
             System.out.println("Agent " + ID + " is serving customer " + customerID);
-//            System.out.println("Agent " + ID + " has served " +  customersServed + " customers.");
             try {
                 /*
                    Simulate busy serving a customer by sleeping for 25 milliseconds.
@@ -115,22 +114,22 @@ public class CallCenter {
         }
 
         public void run() {
-          while (customersServed < CUSTOMERS_PER_AGENT) {
-              waitingCustomersLock.lock();
-              try {
-                  while (waitingCustomers.isEmpty()) {
-                      waitingCustomersEmpty.await();
-                  }
-                  System.out.println(waitingCustomers);
-                  int currentCustomerID = waitingCustomers.remove();
-                  customersServed++;
-                  serve(currentCustomerID);
-              } catch (InterruptedException e) {
-                  e.printStackTrace();
-              } finally {
-                  waitingCustomersLock.unlock();
-              }
-          }
+            int currentCustomerID = 0;
+            while (customersServed < CUSTOMERS_PER_AGENT) {
+                waitingCustomersLock.lock();
+                try {
+                    while (waitingCustomers.isEmpty()) {
+                        waitingCustomersEmpty.await();
+                    }
+                    currentCustomerID = waitingCustomers.remove();
+                    customersServed++;
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } finally {
+                    waitingCustomersLock.unlock();
+                    serve(currentCustomerID);
+                }
+            }
         }
     }
 
@@ -161,16 +160,15 @@ public class CallCenter {
 
             while (customersServiced < NUMBER_OF_CUSTOMERS) {
                 newCustomerLock.lock();
-                try{
-                    while (admittedNewCustomer == -1){
+                try {
+                    while (admittedNewCustomer == -1) {
                         busy.await();
                     }
                     customersServiced++;
                     waitingCustomersLock.lock();
                     try {
-                        greet(customersServiced, waitingCustomers.size() * 2);
+                        greet(admittedNewCustomer, waitingCustomers.size() * 2);
                         waitingCustomers.add(admittedNewCustomer);
-                        System.out.println(waitingCustomers);
                         waitingCustomersEmpty.signal();
                     } finally {
                         waitingCustomersLock.unlock();
